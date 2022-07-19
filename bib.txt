@@ -1,0 +1,7 @@
+
+@InProceedings{keselman2022fuzzy,
+    author    = {Leonid Keselman and Martial Hebert},
+    title     = {Approximate Differentiable Rendering with Algebraic Surfaces},
+    booktitle = {European Conference on Computer Vision (ECCV)},
+    year      = {2022},
+}
