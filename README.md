@@ -1,4 +1,5 @@
 # Fuzzy Metaballs Differentiable Renderer
+# [Project Page](https://leonidk.github.io/fuzzy-metaballs/)
 Here is a simplified version of our code base, without all the specific code to generate our plots, visualizations and run experiments on our custom dataset. Likewise we only feature the linear intersection rule, as it is the main method used in our paper. 
 
 # Shape From Silhouette
