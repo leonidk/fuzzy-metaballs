@@ -7,7 +7,7 @@ def jax_stable_exp(z,s=1,axis=0):
     z = jnp.exp(z)
     return z
 
-def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_1, beta_2, beta_3):
+def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3, beta_4):
     prec = jnp.triu(prec_full)
     weights = jnp.exp(weights_log)
     weights = weights/weights.sum()
@@ -48,16 +48,19 @@ def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_1, b
         return res, d2
 
     zs,stds = jax.vmap(perf_idx)(prec,weights,means)  # jit perf
-    sig1 = (zs > 0)# sigmoid
+    sig1 = (zs > 0)# sigmoid if wanted. beta1 controlled this
 
     w = sig1*jnp.nan_to_num(jax_stable_exp(-zs*beta_2 + beta_3*stds))+1e-20
 
     wgt  = w.sum(0)
     init_t=  (w*jnp.nan_to_num(zs)).sum(0)/jnp.where(wgt==0,1,wgt)
-    return init_t,stds
+    # beta 5 could control a sigmoid shift instead of an exp
+    est_alpha = 1-jnp.exp(-beta_4*(jnp.exp(stds).sum(0)) )
+
+    return init_t,stds,est_alpha
 
 
-def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_1, beta_2, beta_3):
+def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4):
     prec = jnp.triu(prec_full)
     weights = jnp.exp(weights_log)
     weights = weights/weights.sum()
@@ -95,4 +98,6 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_1, 
 
     wgt  = w.sum(0)
     init_t=  (w*jnp.nan_to_num(zs)).sum(0)/jnp.where(wgt==0,1,wgt)
-    return init_t,stds
+    est_alpha = 1-jnp.exp(-beta_4*(jnp.exp(stds).sum(0)) )
+
+    return init_t,stds,est_alpha
