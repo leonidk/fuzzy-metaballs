@@ -2,8 +2,8 @@ import jax
 import jax.numpy as jnp
 
 hyperparams = [-2.8, -0.1,  5.35] # models
-#hyperparams = [-3.0, 0.13, 5.2] # kitti
-#hyperparams = [-4.7, 0.0, 5.3] # blend
+#hyperparams = [-5.2, 0.04, 5.5] # kitti
+#hyperparams = [-3.0, 0.0, 5.4] # blend
 
 def jax_stable_exp(z,s=1,axis=0):
     z = s*z
