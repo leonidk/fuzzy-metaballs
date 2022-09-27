@@ -1,9 +1,10 @@
 import jax
 import jax.numpy as jnp
 
-hyperparams = [-2.8, -0.1,  5.35] # models
-#hyperparams = [-5.2, 0.04, 5.5] # kitti
-#hyperparams = [-3.0, 0.0, 5.4] # blend
+hyperparams_models = [-2.78, -0.1,  6.4, -5.44]
+hyperparams_kitti = [-5.75, 0.476, 7.16, -7.45] 
+hyperparams_blend = [-4.5, 0.09, 6.24, -5.36] 
+hyperparams = hyperparams_models
 
 def jax_stable_exp(z,s=1,axis=0):
     z = s*z
@@ -11,7 +12,7 @@ def jax_stable_exp(z,s=1,axis=0):
     z = jnp.exp(z)
     return z
 
-def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4):
+def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5):
     prec = jnp.triu(prec_full)
     weights = jnp.exp(weights_log)
     weights = weights/weights.sum()
@@ -49,12 +50,14 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
 
     wgt  = w.sum(0)
     init_t=  (w*jnp.nan_to_num(zs)).sum(0)/jnp.where(wgt==0,1,wgt)
-    est_alpha = 1-jnp.exp(-beta_4*(jnp.exp(stds).sum(0)) )
+    # est_alpha = 1-jnp.exp(-beta_4*(jnp.exp(stds).sum(0)) ) # simplier but splottier
+    est_alpha = jnp.tanh(beta_4*(jnp.exp(stds).sum(0)+beta_5) )*0.5 + 0.5 # more complex but flatter
+
 
     return init_t,stds,est_alpha
 
 
-def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3, beta_4):
+def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3, beta_4, beta_5):
     scale = jnp.sqrt(axangl @ axangl)
     vec = axangl/scale
     Rx = jnp.array([[0,0,0],[0,0,-1.0],[0,1,0]])
@@ -69,4 +72,4 @@ def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, b
     trans = jnp.tile(t[None],(camera_rays.shape[0],1))
     
     camera_starts_rays = jnp.stack([camera_rays,trans],1)
-    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4)
+    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5)
