@@ -1,3 +1,10 @@
+# project stuff
+*.png
+*.ply
+data/
+*.mp4
+*.pkl
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

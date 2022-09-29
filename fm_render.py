@@ -53,7 +53,6 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
     # est_alpha = 1-jnp.exp(-beta_4*(jnp.exp(stds).sum(0)) ) # simplier but splottier
     est_alpha = jnp.tanh(beta_4*(jnp.exp(stds).sum(0)+beta_5) )*0.5 + 0.5 # more complex but flatter
 
-
     return init_t,stds,est_alpha
 
 
