@@ -12,6 +12,51 @@ def jax_stable_exp(z,s=1,axis=0):
     z = jnp.exp(z)
     return z
 
+def mrp_to_rot(vec):
+    vec_mag = vec @ vec
+    vec_mag_num = (1-vec_mag)
+    vec_mag_den = ((1+vec_mag)**2)
+    Rx = jnp.array([[0,0,0],[0,0,-1.0],[0,1,0]])
+    Ry = jnp.array([[0,0,1],[0,0,0],[-1.0,0,0]])
+    Rz = jnp.array([[0,-1.0,0],[1,0,0],[0,0,0]])
+    Rmat = jnp.array([Rx,Ry,Rz])
+    skew_sym = (Rmat@vec).T
+    R_est1 = jnp.eye(3) - ( ((4*vec_mag_num)/vec_mag_den) * skew_sym) + ((8/vec_mag_den) * (skew_sym @ skew_sym))
+    Rest = jnp.where(vec_mag > 1e-12,R_est1.T,jnp.eye(3))
+    return Rest
+
+def axangle_to_rot(axangl):
+    scale = jnp.sqrt(axangl @ axangl)
+    vec = axangl/scale
+    Rx = jnp.array([[0,0,0],[0,0,-1.0],[0,1,0]])
+    Ry = jnp.array([[0,0,1],[0,0,0],[-1.0,0,0]])
+    Rz = jnp.array([[0,-1.0,0],[1,0,0],[0,0,0]])
+    Rmat = jnp.array([Rx,Ry,Rz])
+    K = Rmat @ vec
+    ctheta = jnp.cos(scale)
+    stheta = jnp.sin(scale)
+    Rest = jnp.where(scale > 1e-12,(jnp.eye(3) + stheta*K + (1-ctheta)*(K@K)), jnp.eye(3)).T
+    return Rest
+
+def quat_to_rot(q):
+    w, x, y, z = q
+    Nq = w*w + x*x + y*y + z*z
+
+    s = 2.0/Nq
+    X = x*s
+    Y = y*s
+    Z = z*s
+    wX = w*X; wY = w*Y; wZ = w*Z
+    xX = x*X; xY = x*Y; xZ = x*Z
+    yY = y*Y; yZ = y*Z; zZ = z*Z
+    R1 = jnp.array(
+           [[ 1.0-(yY+zZ), xY-wZ, xZ+wY ],
+            [ xY+wZ, 1.0-(xX+zZ), yZ-wX ],
+            [ xZ-wY, yZ+wX, 1.0-(xX+yY) ]])
+    R2 = jnp.eye(3)
+    return jnp.where(Nq > 1e-12,R1,R2)
+
+
 def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5):
     prec = jnp.triu(prec_full)
     weights = jnp.exp(weights_log)
@@ -55,18 +100,27 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
 
     return init_t,stds,est_alpha
 
+# axis angle rotations n * theta
+def render_func_axangle(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3, beta_4, beta_5):
+    Rest = axangle_to_rot(axangl)
+    camera_rays = camera_rays @ Rest
+    trans = jnp.tile(t[None],(camera_rays.shape[0],1))
+    
+    camera_starts_rays = jnp.stack([camera_rays,trans],1)
+    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5)
 
-def render_func(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3, beta_4, beta_5):
-    scale = jnp.sqrt(axangl @ axangl)
-    vec = axangl/scale
-    Rx = jnp.array([[0,0,0],[0,0,-1.0],[0,1,0]])
-    Ry = jnp.array([[0,0,1],[0,0,0],[-1.0,0,0]])
-    Rz = jnp.array([[0,-1.0,0],[1,0,0],[0,0,0]])
-    Rmat = jnp.array([Rx,Ry,Rz])
-    K = Rmat @ vec
-    ctheta = jnp.cos(scale)
-    stheta = jnp.sin(scale)
-    Rest = jnp.where(scale > 1e-12,(jnp.eye(3) + stheta*K + (1-ctheta)*(K@K)), jnp.eye(3)).T
+# modified rod. parameters n * tan(theta/4)
+def render_func_mrp(means, prec_full, weights_log, camera_rays, mrp, t, beta_2, beta_3, beta_4, beta_5):
+    Rest = mrp_to_rot(mrp)
+    camera_rays = camera_rays @ Rest
+    trans = jnp.tile(t[None],(camera_rays.shape[0],1))
+    
+    camera_starts_rays = jnp.stack([camera_rays,trans],1)
+    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5)
+
+# quaternions [cos(theta/2), sin(theta/2) * n]
+def render_func_quat(means, prec_full, weights_log, camera_rays, quat, t, beta_2, beta_3, beta_4, beta_5):
+    Rest = quat_to_rot(quat)
     camera_rays = camera_rays @ Rest
     trans = jnp.tile(t[None],(camera_rays.shape[0],1))
     
