@@ -16,26 +16,30 @@ def mrp_to_rot(vec):
     vec_mag = vec @ vec
     vec_mag_num = (1-vec_mag)
     vec_mag_den = ((1+vec_mag)**2)
-    Rx = jnp.array([[0,0,0],[0,0,-1.0],[0,1,0]])
-    Ry = jnp.array([[0,0,1],[0,0,0],[-1.0,0,0]])
-    Rz = jnp.array([[0,-1.0,0],[1,0,0],[0,0,0]])
-    Rmat = jnp.array([Rx,Ry,Rz])
-    skew_sym = (Rmat@vec).T
-    R_est1 = jnp.eye(3) - ( ((4*vec_mag_num)/vec_mag_den) * skew_sym) + ((8/vec_mag_den) * (skew_sym @ skew_sym))
-    Rest = jnp.where(vec_mag > 1e-12,R_est1.T,jnp.eye(3))
+    x,y,z = vec
+    K = jnp.array(
+           [[  0, -z,  y ],
+            [  z,  0, -x ],
+            [ -y,  x,  0 ]])
+    R1 = jnp.eye(3) - ( ((4*vec_mag_num)/vec_mag_den) * K) + ((8/vec_mag_den) * (K @ K))
+    R2 = jnp.eye(3)
+
+    Rest = jnp.where(vec_mag > 1e-12,R1,R2)
     return Rest
 
 def axangle_to_rot(axangl):
     scale = jnp.sqrt(axangl @ axangl)
     vec = axangl/scale
-    Rx = jnp.array([[0,0,0],[0,0,-1.0],[0,1,0]])
-    Ry = jnp.array([[0,0,1],[0,0,0],[-1.0,0,0]])
-    Rz = jnp.array([[0,-1.0,0],[1,0,0],[0,0,0]])
-    Rmat = jnp.array([Rx,Ry,Rz])
-    K = Rmat @ vec
+    x,y,z = vec
+    K = jnp.array(
+           [[  0, -z,  y ],
+            [  z,  0, -x ],
+            [ -y,  x,  0 ]])
     ctheta = jnp.cos(scale)
     stheta = jnp.sin(scale)
-    Rest = jnp.where(scale > 1e-12,(jnp.eye(3) + stheta*K + (1-ctheta)*(K@K)), jnp.eye(3)).T
+    R1 = jnp.eye(3) + stheta*K + (1-ctheta)*(K @ K)
+    R2 = jnp.eye(3)
+    Rest = jnp.where(scale > 1e-12,R1.T, R2)
     return Rest
 
 def quat_to_rot(q):
