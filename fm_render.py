@@ -1,10 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-hyperparams_models = [-2.78, -0.1,  6.4, -5.44]
-hyperparams_kitti = [-5.75, 0.476, 7.16, -7.45] 
-hyperparams_blend = [-4.5, 0.09, 6.24, -5.36] 
-hyperparams = hyperparams_models
+hyperparams = [2.0, -0.1,  6.4, -5.44]
 
 def jax_stable_exp(z,s=1,axis=0):
     z = s*z
