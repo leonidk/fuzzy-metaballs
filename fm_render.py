@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-hyperparams = [2.0, -0.1,  6.4, -5.44]
+hyperparams = [2.0, 0.25]
 
 def jax_stable_exp(z,s=1,axis=0):
     z = s*z
@@ -58,23 +58,23 @@ def quat_to_rot(q):
     return jnp.where(Nq > 1e-12,R1,R2)
 
 
-def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5):
+def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3):
     prec = jnp.triu(prec_full)
-    weights = jnp.exp(weights_log)
-    weights = weights/weights.sum()
+    # weights = jnp.exp(weights_log)
+    # weights = weights/weights.sum()
 
     def perf_idx(prcI,w,meansI):
         prc = prcI.T
-        #prc = jnp.diag(jnp.sign(jnp.diag(prc))) @ prc
-        div = jnp.prod(jnp.diag(jnp.abs(prc))) + 1e-20
+        #div = jnp.prod(jnp.diag(jnp.abs(prc))) + 1e-20
 
         def perf_ray(r_t):
             r = r_t[0]
             t = r_t[1]
             p =  meansI -t 
 
+            projp = prc @ p
             vsv = ((prc @ r)**2).sum()
-            psv = ((prc @ p) * (prc@r)).sum()
+            psv = ((projp) * (prc@r)).sum()
 
             # linear
             res = (psv)/(vsv)
@@ -82,48 +82,53 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
             v = r * res - p
 
             d0 = ((prc @ v)**2).sum()
-            d2 = -0.5*d0 + jnp.log(w)
+            d2 = -0.5*d0 + w
             #d3 =  d2 + jnp.log(div)
 
-            return res,d2
-        res,d2  = jax.vmap((perf_ray))(camera_starts_rays) # jit perf
-        return res, d2
+            norm_est = projp/jnp.linalg.norm(projp)
+            norm_est = jnp.where(r@norm_est < 0,norm_est,-norm_est)
+            return res,d2,norm_est
+        return jax.vmap((perf_ray))(camera_starts_rays) 
 
-    zs,stds = jax.vmap(perf_idx)(prec,weights,means)  # jit perf
+    zs,stds,projp = jax.vmap(perf_idx)(prec,weights_log,means)  # jit perf
+
+    est_alpha = 1-jnp.exp(-jnp.exp(stds).sum(0) ) # simplier but splottier
     sig1 = (zs > 0)# sigmoid
-
     w = sig1*jnp.nan_to_num(jax_stable_exp(-zs*beta_2 + beta_3*stds))+1e-20
 
     wgt  = w.sum(0)
-    init_t=  (w*jnp.nan_to_num(zs)).sum(0)/jnp.where(wgt==0,1,wgt)
-    # est_alpha = 1-jnp.exp(-beta_4*(jnp.exp(stds).sum(0)) ) # simplier but splottier
-    est_alpha = jnp.tanh(beta_4*(jnp.exp(stds).sum(0)+beta_5) )*0.5 + 0.5 # more complex but flatter
+    div = jnp.where(wgt==0,1,wgt)
+    w = w/div
 
-    return init_t,stds,est_alpha
+    init_t=  (w*jnp.nan_to_num(zs)).sum(0)
+    est_norm = (projp * w[:,:,None]).sum(axis=0)
+    est_norm = est_norm/jnp.linalg.norm(est_norm,axis=1,keepdims=True)
+
+    return init_t,est_alpha,est_norm,w
 
 # axis angle rotations n * theta
-def render_func_axangle(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3, beta_4, beta_5):
+def render_func_axangle(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3):
     Rest = axangle_to_rot(axangl)
     camera_rays = camera_rays @ Rest
     trans = jnp.tile(t[None],(camera_rays.shape[0],1))
     
     camera_starts_rays = jnp.stack([camera_rays,trans],1)
-    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5)
+    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3)
 
 # modified rod. parameters n * tan(theta/4)
-def render_func_mrp(means, prec_full, weights_log, camera_rays, mrp, t, beta_2, beta_3, beta_4, beta_5):
+def render_func_mrp(means, prec_full, weights_log, camera_rays, mrp, t, beta_2, beta_3):
     Rest = mrp_to_rot(mrp)
     camera_rays = camera_rays @ Rest
     trans = jnp.tile(t[None],(camera_rays.shape[0],1))
     
     camera_starts_rays = jnp.stack([camera_rays,trans],1)
-    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5)
+    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3)
 
 # quaternions [cos(theta/2), sin(theta/2) * n]
-def render_func_quat(means, prec_full, weights_log, camera_rays, quat, t, beta_2, beta_3, beta_4, beta_5):
+def render_func_quat(means, prec_full, weights_log, camera_rays, quat, t, beta_2, beta_3):
     Rest = quat_to_rot(quat)
     camera_rays = camera_rays @ Rest
     trans = jnp.tile(t[None],(camera_rays.shape[0],1))
     
     camera_starts_rays = jnp.stack([camera_rays,trans],1)
-    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3, beta_4, beta_5)
+    return render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, beta_3)

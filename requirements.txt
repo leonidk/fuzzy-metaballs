@@ -2,6 +2,8 @@ numpy
 matplotlib
 scipy
 jax
-torch
-pytorch3d
 tqdm
+Pillow
+scikit-image
+pyrender
+transforms3d
