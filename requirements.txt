@@ -7,3 +7,4 @@ Pillow
 scikit-image
 pyrender
 transforms3d
+optax

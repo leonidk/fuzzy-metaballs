@@ -106,6 +106,74 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
 
     return init_t,est_alpha,est_norm,w
 
+# this version has no hyperparameters
+# and does classic alpha compositing down z-order
+# it's typically 3x slower than the above
+# and seems to behave slightly worse
+# but serves as a direct substitute.
+# I will document this with experiments
+# in a preprint sometime in June/July '23
+def render_func_rays_hffm(means, prec_full, weights_log, camera_starts_rays):
+    prec = jnp.triu(prec_full)
+    #weights = jnp.exp(weights_log)
+    #weights = weights/weights.sum()
+
+    def perf_idx(prcI,w,meansI):
+        prc = prcI.T
+        #prc = jnp.diag(jnp.sign(jnp.diag(prc))) @ prc
+        div = jnp.prod(jnp.diag(jnp.abs(prc))) + 1e-20
+
+        def perf_ray(r_t):
+            r = r_t[0]
+            t = r_t[1]
+            p =  meansI -t 
+
+            projp = prc @ p
+            vsv = ((prc @ r)**2).sum()
+            psv = ((projp) * (prc@r)).sum()
+
+            # linear
+            res = (psv)/(vsv)
+            
+            v = r * res - p
+
+            d0 = ((prc @ v)**2).sum()# + 3*jnp.log(jnp.pi*2)
+            d2 = -0.5*d0 + w
+            #d3 =  d2 + jnp.log(div) #+ 3*jnp.log(res)
+            norm_est = projp/jnp.linalg.norm(projp)
+            norm_est = jnp.where(r@norm_est < 0,norm_est,-norm_est)
+            return res,d2,norm_est
+        res,d2,projp  = jax.vmap((perf_ray))(camera_starts_rays) # jit perf
+        return res, d2,projp
+
+    zs,stds,projp = jax.vmap(perf_idx)(prec,weights_log,means)  # jit perf
+
+    # compositing
+    sample_density = jnp.exp(stds)  # simplier but splottier
+    def sort_w(z,densities):
+        idxs = jnp.argsort(z,axis=0)
+        order_density = densities[idxs]
+        order_summed_density = jnp.cumsum(order_density)
+        order_prior_density =  order_summed_density - order_density
+        ea = 1 - jnp.exp(-order_summed_density[-1])
+        prior_density = jnp.zeros_like(densities)
+        prior_density = prior_density.at[idxs].set(order_prior_density)
+        transmit = jnp.exp(-prior_density)
+        wout = transmit * (1-jnp.exp(-densities))
+        return wout,ea
+    w,est_alpha= jax.vmap(sort_w)(zs.T,sample_density.T)
+    w = w.T
+
+    wgt  = w.sum(0)
+    div = jnp.where(wgt==0,1,wgt)
+    w_n = w/div
+
+    init_t=  (w_n*jnp.nan_to_num(zs)).sum(0)
+    est_norm = (projp * w_n[:,:,None]).sum(axis=0)
+    est_norm = est_norm/jnp.linalg.norm(est_norm,axis=1,keepdims=True)
+
+    return init_t,est_alpha,est_norm,w
+    
 # axis angle rotations n * theta
 def render_func_axangle(means, prec_full, weights_log, camera_rays, axangl, t, beta_2, beta_3):
     Rest = axangle_to_rot(axangl)
