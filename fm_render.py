@@ -75,6 +75,7 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
             projp = prc @ p
             vsv = ((prc @ r)**2).sum()
             psv = ((projp) * (prc@r)).sum()
+            projp2 = prc.T @ projp
 
             # linear
             res = (psv)/(vsv)
@@ -85,7 +86,7 @@ def render_func_rays(means, prec_full, weights_log, camera_starts_rays, beta_2, 
             d2 = -0.5*d0 + w
             #d3 =  d2 + jnp.log(div)
 
-            norm_est = projp/jnp.linalg.norm(projp)
+            norm_est = projp2/jnp.linalg.norm(projp2)
             norm_est = jnp.where(r@norm_est < 0,norm_est,-norm_est)
             return res,d2,norm_est
         return jax.vmap((perf_ray))(camera_starts_rays) 
@@ -131,7 +132,7 @@ def render_func_rays_hffm(means, prec_full, weights_log, camera_starts_rays):
             projp = prc @ p
             vsv = ((prc @ r)**2).sum()
             psv = ((projp) * (prc@r)).sum()
-
+            projp2 = prc.T @ projp
             # linear
             res = (psv)/(vsv)
             
@@ -140,7 +141,7 @@ def render_func_rays_hffm(means, prec_full, weights_log, camera_starts_rays):
             d0 = ((prc @ v)**2).sum()# + 3*jnp.log(jnp.pi*2)
             d2 = -0.5*d0 + w
             #d3 =  d2 + jnp.log(div) #+ 3*jnp.log(res)
-            norm_est = projp/jnp.linalg.norm(projp)
+            norm_est = projp2/jnp.linalg.norm(projp2)
             norm_est = jnp.where(r@norm_est < 0,norm_est,-norm_est)
             return res,d2,norm_est
         res,d2,projp  = jax.vmap((perf_ray))(camera_starts_rays) # jit perf
